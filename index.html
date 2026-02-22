@@ -25,8 +25,8 @@
         
         idx, tmr, score, round_cnt, miss_count = 0, 0, 0, 1, 0
         bar_x, bar_y = 400, 540
-        ball_x, ball_y, ball_xp, ball_yp = 400, 240, 5, 5
-        speed = [0, 5, 6, 7, 8]
+        ball_x, ball_y, ball_xp, ball_yp = 400, 240, 7, 7
+        speed = [0, 7, 9, 11, 14]
         keys = {}
         block = []
 
@@ -83,7 +83,7 @@
         def on_click(e):
             global idx, tmr, ball_x, ball_y, ball_xp, ball_yp, round_cnt
             if idx == 2: # GAME OVER時
-                ball_x, ball_y, ball_xp, ball_yp = 400, 240, 5, 5
+                ball_x, ball_y, ball_xp, ball_yp = 400, 240, 7, 7
                 idx, tmr = 0, 0
             elif idx == 3: # CLEAR時
                 round_cnt += 1
@@ -176,7 +176,7 @@
                     ctx.fillText("Click or Space to Retry", 400, 350)
                     if tmr == 1: miss_count += 1
                     if keys.get(" ") or keys.get("Spacebar"):
-                        ball_x, ball_y, ball_xp, ball_yp = 400, 240, 5, 5
+                        ball_x, ball_y, ball_xp, ball_yp = 400, 240, 7, 7
                         idx, tmr = 0, 0
 
                 elif idx == 3: # CLEAR
