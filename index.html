@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>PyScript ブロック崩し</title>
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <h1>ブロック崩し</h1>
+    <p>画面を一度クリックしてから、マウスか矢印キーで操作してください</p>
+    <canvas id="gameCanvas" width="1000" height="600" tabindex="1"></canvas>
+
+    <script type="py">
+        import asyncio
+        from pyscript import document, window
+        from pyodide.ffi import create_proxy
+
+        # --- グローバル変数 ---
+        canvas = document.getElementById("gameCanvas")
+        ctx = canvas.getContext("2d")
+        
+        idx, tmr, score, round_cnt, miss_count = 0, 0, 0, 1, 0
+        bar_x, bar_y = 400, 540
+        ball_x, ball_y, ball_xp, ball_yp = 400, 240, 5, 5
+        speed = [0, 5, 6, 7, 8]
+        keys = {}
+        block = []
+
+        def init_blocks():
+            global block
+            block = [[1 for _ in range(10)] for _ in range(5)]
+            for _ in range(10): block.append([0]*10)
+
+        init_blocks()
+
+        # --- イベントハンドラ（create_proxyで保護する） ---
+        def on_keydown(e):
+            global keys
+            keys[e.key] = True
+            if e.key == " ": e.preventDefault()
+
+        def on_keyup(e):
+            global keys
+            keys[e.key] = False
+
+        def on_mousemove(e):
+            global bar_x
+            rect = canvas.getBoundingClientRect()
+            client_x = e.clientX - rect.left
+            new_x = client_x * (1000 / rect.width)
+            if 80 <= new_x <= 720:
+                bar_x = new_x
+
+        # Pythonの関数をJSで使えるように「プロキシ」化して登録
+        keydown_proxy = create_proxy(on_keydown)
+        keyup_proxy = create_proxy(on_keyup)
+        mousemove_proxy = create_proxy(on_mousemove)
+
+        window.addEventListener("keydown", keydown_proxy)
+        window.addEventListener("keyup", keyup_proxy)
+        window.addEventListener("mousemove", mousemove_proxy)
+        
+        # キャンバスにフォーカスを当てる
+        canvas.focus()
+
+        def draw_game():
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            is_all_cleared = True
+            for y in range(5):
+                for x in range(10):
+                    if block[y][x] == 1:
+                        is_all_cleared = False
+                        col = f"rgb({(15-x-int(y/3))*16}, {(x+1)*20}, {y*40+50})"
+                        ctx.fillStyle = col
+                        ctx.fillRect(x*80 + 2, y*40 + 4, 76, 28)
+            
+            ctx.fillStyle = "silver"
+            ctx.fillRect(bar_x-80, bar_y-12, 160, 24)
+            ctx.fillStyle = "white"
+            ctx.fillRect(bar_x-78, bar_y-10, 156, 20)
+
+            ctx.beginPath()
+            ctx.arc(ball_x, ball_y, 20, 0, 3.14159 * 2)
+            ctx.fillStyle = "gold"
+            ctx.fill()
+            ctx.closePath()
+
+            ctx.fillStyle = "silver"
+            ctx.fillRect(800, 0, 200, 600)
+            ctx.fillStyle = "black"
+            ctx.font = "20px sans-serif"
+            ctx.textAlign = "center"
+            ctx.fillText(f"ROUND: {round_cnt}", 900, 50)
+            ctx.fillText(f"SCORE: {score}", 900, 150)
+            ctx.fillText(f"MISS: {miss_count}", 900, 250)
+            return is_all_cleared
+
+        async def main_loop():
+            global idx, tmr, ball_x, ball_y, ball_xp, ball_yp, bar_x, score, round_cnt, miss_count, keys
+            
+            while True:
+                tmr += 1
+                is_clr = draw_game()
+
+                # キー入力チェック
+                if keys.get("ArrowLeft"):
+                    if bar_x > 80: bar_x -= 15
+                if keys.get("ArrowRight"):
+                    if bar_x < 720: bar_x += 15
+
+                if idx == 0: # READY
+                    ctx.fillStyle = "cyan"
+                    ctx.font = "60px sans-serif"
+                    ctx.fillText("READY", 400, 300)
+                    if tmr > 30:
+                        idx, tmr = 1, 0
+                
+                elif idx == 1: # PLAYING
+                    ball_x += ball_xp
+                    ball_y += ball_yp
+                    if ball_x < 20 or ball_x > 780: ball_xp *= -1
+                    if ball_y < 20: ball_yp *= -1
+                    
+                    bx, by = int(ball_x/80), int(ball_y/40)
+                    if 0 <= by < 15 and 0 <= bx < 10:
+                        if block[by][bx] == 1:
+                            block[by][bx] = 0
+                            ball_yp *= -1
+                            score += 10
+
+                    if bar_y-25 <= ball_y <= bar_y and bar_x-80 <= ball_x <= bar_x+80:
+                        ball_yp = -abs(speed[round_cnt])
+                        ball_xp += (ball_x - bar_x) / 8
+                        score += 1
+
+                    if ball_y > 600:
+                        idx, tmr = 2, 0
+                    if is_clr:
+                        idx, tmr = 3, 0
+
+                elif idx == 2: # GAME OVER
+                    ctx.fillStyle = "red"
+                    ctx.font = "50px sans-serif"
+                    ctx.fillText("GAME OVER", 400, 250)
+                    ctx.font = "30px sans-serif"
+                    ctx.fillText("Press SPACE to Retry", 400, 350)
+                    if tmr == 1: miss_count += 1
+                    if keys.get(" ") or keys.get("Spacebar"):
+                        ball_x, ball_y, ball_xp, ball_yp = 400, 240, 5, 5
+                        idx, tmr = 0, 0
+
+                elif idx == 3: # CLEAR
+                    ctx.fillStyle = "lime"
+                    ctx.font = "50px sans-serif"
+                    ctx.fillText("ROUND CLEAR!", 400, 250)
+                    if keys.get(" ") or keys.get("Spacebar"):
+                        round_cnt += 1
+                        init_blocks()
+                        ball_x, ball_y = 400, 240
+                        idx, tmr = 0, 0
+
+                await asyncio.sleep(0.02)
+
+        asyncio.ensure_future(main_loop())
+    </script>
+</body>
+
+</html>
