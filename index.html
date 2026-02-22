@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>PyScript ブロック崩し</title>
     <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
     <link rel="stylesheet" href="style.css">
@@ -10,7 +11,7 @@
 
 <body>
     <h1>ブロック崩し</h1>
-    <p>画面を一度クリックしてから、マウスか矢印キーで操作してください</p>
+    <p>マウス・矢印キー・タッチスライドで操作</p>
     <canvas id="gameCanvas" width="1000" height="600" tabindex="1"></canvas>
 
     <script type="py">
@@ -36,7 +37,7 @@
 
         init_blocks()
 
-        # --- イベントハンドラ（create_proxyで保護する） ---
+        # --- イベントハンドラ ---
         def on_keydown(e):
             global keys
             keys[e.key] = True
@@ -46,25 +47,52 @@
             global keys
             keys[e.key] = False
 
-        def on_mousemove(e):
+        # マウス・タッチ共通の移動処理
+        def move_bar(client_x):
             global bar_x
             rect = canvas.getBoundingClientRect()
-            client_x = e.clientX - rect.left
-            new_x = client_x * (1000 / rect.width)
+            # キャンバス内での相対座標を計算
+            new_x = (client_x - rect.left) * (1000 / rect.width)
             if 80 <= new_x <= 720:
                 bar_x = new_x
 
-        # Pythonの関数をJSで使えるように「プロキシ」化して登録
+        def on_mousemove(e):
+            move_bar(e.clientX)
+
+        def on_touchmove(e):
+            e.preventDefault() # スクロール防止
+            if e.touches.length > 0:
+                move_bar(e.touches.item(0).clientX)
+
+        # プロキシ登録
         keydown_proxy = create_proxy(on_keydown)
         keyup_proxy = create_proxy(on_keyup)
         mousemove_proxy = create_proxy(on_mousemove)
+        touchmove_proxy = create_proxy(on_touchmove)
 
         window.addEventListener("keydown", keydown_proxy)
         window.addEventListener("keyup", keyup_proxy)
         window.addEventListener("mousemove", mousemove_proxy)
+        # passive: False にすることで e.preventDefault() を有効にする
+        window.addEventListener("touchmove", touchmove_proxy, {"passive": False})
+        window.addEventListener("touchstart", touchmove_proxy, {"passive": False})
         
-        # キャンバスにフォーカスを当てる
         canvas.focus()
+
+        # リトライ用のクリック判定（スマホ用）
+        def on_click(e):
+            global idx, tmr, ball_x, ball_y, ball_xp, ball_yp, round_cnt
+            if idx == 2: # GAME OVER時
+                ball_x, ball_y, ball_xp, ball_yp = 400, 240, 5, 5
+                idx, tmr = 0, 0
+            elif idx == 3: # CLEAR時
+                round_cnt += 1
+                init_blocks()
+                ball_x, ball_y = 400, 240
+                idx, tmr = 0, 0
+
+        click_proxy = create_proxy(on_click)
+        window.addEventListener("click", click_proxy)
 
         def draw_game():
             ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -105,7 +133,6 @@
                 tmr += 1
                 is_clr = draw_game()
 
-                # キー入力チェック
                 if keys.get("ArrowLeft"):
                     if bar_x > 80: bar_x -= 15
                 if keys.get("ArrowRight"):
@@ -132,7 +159,7 @@
                             score += 10
 
                     if bar_y-25 <= ball_y <= bar_y and bar_x-80 <= ball_x <= bar_x+80:
-                        ball_yp = -abs(speed[round_cnt])
+                        ball_yp = -abs(speed[min(round_cnt, 4)])
                         ball_xp += (ball_x - bar_x) / 8
                         score += 1
 
@@ -146,7 +173,7 @@
                     ctx.font = "50px sans-serif"
                     ctx.fillText("GAME OVER", 400, 250)
                     ctx.font = "30px sans-serif"
-                    ctx.fillText("Press SPACE to Retry", 400, 350)
+                    ctx.fillText("Click or Space to Retry", 400, 350)
                     if tmr == 1: miss_count += 1
                     if keys.get(" ") or keys.get("Spacebar"):
                         ball_x, ball_y, ball_xp, ball_yp = 400, 240, 5, 5
@@ -156,6 +183,7 @@
                     ctx.fillStyle = "lime"
                     ctx.font = "50px sans-serif"
                     ctx.fillText("ROUND CLEAR!", 400, 250)
+                    ctx.fillText("Click or Space to Next", 400, 350)
                     if keys.get(" ") or keys.get("Spacebar"):
                         round_cnt += 1
                         init_blocks()
